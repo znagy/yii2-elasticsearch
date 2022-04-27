@@ -173,39 +173,45 @@ class Connection extends Component
      */
     protected function populateNodes()
     {
-        $node = reset($this->nodes);
-        $host = $node['http_address'];
-        $protocol = isset($node['protocol']) ? $node['protocol'] : $this->defaultProtocol;
-        if (strncmp($host, 'inet[/', 6) === 0) {
-            $host = substr($host, 6, -1);
-        }
-        $response = $this->httpRequest('GET', "$protocol://$host/_nodes/_all/http");
-        if (!empty($response['nodes'])) {
-            $nodes = $response['nodes'];
-        } else {
-            $nodes = [];
-        }
-
-        foreach ($nodes as $key => &$node) {
-            // Make sure that nodes have an 'http_address' property, which is not the case if you're using AWS
-            // Elasticsearch service (at least as of Oct., 2015). - TO BE VERIFIED
-            // Temporary workaround - simply ignore all invalid nodes
-            if (!isset($node['http']['publish_address'])) {
-                unset($nodes[$key]);
+        foreach ($this->nodes as $node) {
+            $host = $node['http_address'];
+            $protocol = isset($node['protocol']) ? $node['protocol'] : $this->defaultProtocol;
+            if (strncmp($host, 'inet[/', 6) === 0) {
+                $host = substr($host, 6, -1);
             }
-            $node['http_address'] = $node['http']['publish_address'];
 
-            // Protocol is not a standard ES node property, so we add it manually
-            $node['protocol'] = $this->defaultProtocol;
-        }
+    		try {
+    	        $response = $this->httpRequest('GET', "$protocol://$host/_nodes/_all/http");
+    		} catch (Exception $e) {
+    			continue;
+    		}
+            if (!empty($response['nodes'])) {
+                $nodes = $response['nodes'];
+            } else {
+                $nodes = [];
+            }
 
-        if (!empty($nodes)) {
-            $this->nodes = array_values($nodes);
-        } else {
-            curl_close($this->_curl);
-            throw new Exception('Cluster autodetection did not find any active node. Make sure a GET /_nodes reguest on the hosts defined in the config returns the "http_address" field for each node.');
-        }
-    }
+            foreach ($nodes as $key => &$node) {
+                // Make sure that nodes have an 'http_address' property, which is not the case if you're using AWS
+                // Elasticsearch service (at least as of Oct., 2015). - TO BE VERIFIED
+                // Temporary workaround - simply ignore all invalid nodes
+                if (!isset($node['http']['publish_address'])) {
+                    unset($nodes[$key]);
+                }
+                $node['http_address'] = $node['http']['publish_address'];
+
+                // Protocol is not a standard ES node property, so we add it manually
+                $node['protocol'] = $this->defaultProtocol;
+            }
+
+            if (!empty($nodes)) {
+                $this->nodes = array_values($nodes);
+    			return;
+            }
+    	}
+        curl_close($this->_curl);
+        throw new Exception('Cluster autodetection did not find any active node. Make sure a GET /_nodes reguest on the hosts defined in the config returns the "http_address" field for each node.');
+}
 
     /**
      * select active node randomly
